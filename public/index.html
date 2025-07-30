@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Custom GPT Payment (v2)</title>
+    <style>
+        .btn {
+            cursor: pointer;
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            background: #f5f5f5
+        }
+        
+        .btn:active {
+            transform: translateY(1px)
+        }
+        
+        #status {
+            margin-top: 10px
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Custom GPT Payment</h1>
+
+    <button id="payBtn" class="btn">Pay ₹500 (Checkout v2)</button>
+    <p id="status"></p>
+
+    <!-- Razorpay v2 -->
+    <script src="https://checkout.razorpay.com/v2/checkout.js"></script>
+    <script>
+        const statusEl = document.getElementById('status');
+
+        async function createOrder(amountPaise) {
+            const res = await fetch('/api/payments/razorpay/create_order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    amount: amountPaise,
+                    currency: 'INR',
+                    receipt: 'rcpt_' + Date.now(),
+                    notes: {
+                        plan: 'premium'
+                    }
+                })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'create_order failed');
+            return data; // { orderId, amount, currency }
+        }
+
+        async function onPayClick() {
+            statusEl.textContent = 'Creating order...';
+            try {
+                const {
+                    orderId,
+                    amount,
+                    currency
+                } = await createOrder(50000);
+
+                // Store for safety (in case you want to show it later even if callback params are missing)
+                localStorage.setItem('lastOrderId', orderId);
+
+                const options = {
+                    key: 'rzp_test_nmQg3cf5Y2sAPI', // ← your real test Key ID
+                    amount,
+                    currency,
+                    order_id: orderId,
+                    name: 'My Custom GPT Service',
+                    description: 'Premium Access',
+                    // ✅ After success, Razorpay will POST here and we’ll redirect to /payment-success?order_id=...
+                    callback_url: '/payment/callback',
+                    theme: {
+                        color: '#3399cc'
+                    }
+                };
+
+                const rzp = new Razorpay(options);
+                rzp.on('payment.failed', (e) => {
+                    console.error('payment.failed:', e.error);
+                    statusEl.textContent = `Payment failed: ${e?.error?.description || 'Unknown error'}`;
+                });
+
+                statusEl.textContent = '';
+                rzp.open();
+            } catch (err) {
+                console.error(err);
+                statusEl.textContent = 'Error: ' + err.message;
+            }
+        }
+
+        document.getElementById('payBtn').addEventListener('click', onPayClick);
+    </script>
+</body>
+
+</html>
